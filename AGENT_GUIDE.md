@@ -35,12 +35,31 @@ reaches it, the ones deliberately unexposed and why, capabilities that exist in
 the code but are still unwired, and the search scopes.
 
 ```json
-→ { "tool_count": 45,
+→ { "tool_count": 54,
     "tools": [{ "name": "search_vault", "summary": "..." }, ...],
     "graph_exports": { "wired": {...}, "not_exposed": {...} },
     "known_unwired": {...},
     "search_scopes": {...} }
 ```
+
+### Tools this document does not describe
+
+`capabilities()` returned 54 tools on 2026-09-03; the prose below covers roughly
+two thirds of them. The families missing entirely, so they are at least findable:
+
+| Family | Tools | What it is for |
+|---|---|---|
+| Local queue | `local_task_submit` / `_status` / `_list` / `_cancel` | Hand work to the local model and get a task id back instead of blocking |
+| Windows | `window_open` / `window_close` / `window_list` | Mount and unmount MCP servers to free the context they occupy |
+| Workspaces | `workspace_save` / `workspace_apply` / `workspace_list` | Named sets of mounted servers |
+| Graph | `graph_preview`, `graph_build(_bg)`, `graph_export`, `graph_report`, `graph_affected`, `graph_list`, `graph_hook_install` / `_status` / `_uninstall`, `extract_source_maps` | Code knowledge graphs |
+| Vault | `vault_find_notes` (literal match, no embeddings), `vault_note_links`, `vault_rename_note`, `vault_health_detail` | |
+| Ingest | `ingest_forget` | The exact inverse of `ingest_folder` — this is what makes an ingest reversible |
+
+**Sidecar routing, also undocumented.** `sidecar.py` reads a `<stem>.meta.yaml`
+dropped beside a file in `_inbox/`. Keys `folder_hint` (bypasses the classifier
+entirely) and `no_merge` (never merge this into an existing note). It is the
+manual routing control the inbox pipeline otherwise lacks.
 
 **This document is not authoritative; that report is.** Prose drifts from code
 with nothing to catch it — every numeric constant in this guide is a copy that
@@ -94,9 +113,13 @@ The note is searchable in the same session as soon as it is written.
 
 Valid folders are the `heartbeat()` → `vault.folder_counts` keys, and are matched
 **case-insensitively** — passing `write_note(folder="decisions")` or `write_note(folder="Decisions")`
-automatically resolves to the vault's configured folder casing. On this vault they are: `Projects`,
-`Decisions`, `Fixes`, `Sessions`, `Procedures`, `Reference`, `Tools`, `Scratch`,
-`Infrastructure`. There is no `research` folder — research notes go to `Reference`.
+automatically resolves to the vault's configured folder casing. On this vault they are exactly
+these six: `decisions`, `research`, `tools`, `fixes`, `reference`, `sessions`.
+
+`research` **does** exist here — an earlier version of this file said it did not and routed
+research notes to `reference`; that was wrong for this install. `Projects`, `Procedures`,
+`Scratch` and `Infrastructure` do **not** exist and a write to any of them fails. Corrected
+2026-09-03 against `heartbeat().vault.folder_counts`, which is the authority.
 
 ```json
 → { "status": "ok", "path": "2026-06-03-Q3-budget-decision.md", "folder": "Decisions" }
@@ -806,6 +829,14 @@ Drop any of these into `<vault>/_inbox/` and run `run_maintenance` or `run_maint
 | Word | `.docx` | Paragraphs and tables extracted |
 | Excel | `.xlsx` | Each sheet converted to markdown table (max 200 rows) |
 | PowerPoint | `.pptx` | Slide text extracted in order |
+| JSON | `.json` | Supported by `extractor.py` — this row was missing from earlier versions of this file, so file counts made from the list above ran low |
+
+**Watch for data files masquerading as documents.** The extractor accepts `.csv` and `.json`
+whatever they contain, and a large data file becomes many chunks and many embeddings without
+answering any question. On 2026-09-03 a single `google-fonts.csv` (745 KB) plus two
+`country-meta.json` (340 KB each) generated roughly 450 BGE embeddings and dominated a
+45-minute ingest. Pass `exclude` for `data`/`assets` directories when ingesting a folder that
+ships reference datasets.
 
 **Images are not supported.** If the user wants to store an image reference, ask them to drop a `.txt` file describing it instead.
 
