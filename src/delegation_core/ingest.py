@@ -245,6 +245,23 @@ class IngestManager:
                     getattr(self._cfg, "client_path_roots", None),
                     getattr(self._cfg, "client_aliases", None),
                 )
+                # Drop this file's previous rows before writing the new ones.
+                # Upsert alone cannot express "and nothing else": ids are
+                # `path::chunk_N`, or the bare path when a file yields a single
+                # chunk, so a re-ingest producing FEWER chunks than last time
+                # leaves every id above the new count behind -- and when the new
+                # count is 1 the id shape changes, orphaning all of them. The
+                # mirror case is just as real and easier to miss: growing from
+                # exactly one chunk to several leaves the bare-path id behind,
+                # because nothing writes that id again. Any change to the chunk
+                # count can strand rows; only a same-count re-ingest is safe.
+                # Measured: moving ingest_chunk_size from 1000 back to 4000 left
+                # 3784 stale rows against 1193 live ones, still answering
+                # searches from a fragmentation no longer in use.
+                # reindex_vault already deletes by path for the same reason.
+                # Placed after extraction succeeds: a failed extract must not
+                # take the previous rows down with it.
+                self._drop_rows_for_path(f_str)
                 for i, chunk in enumerate(chunks):
                     chunk_id = f"{f}::chunk_{i}" if len(chunks) > 1 else str(f)
                     meta = {
@@ -320,6 +337,26 @@ class IngestManager:
                     "documents only. Use graph_build() to make a codebase searchable."
                 )
         return result
+
+    def _drop_rows_for_path(self, path: str) -> None:
+        """Remove every indexed row for one file, whatever its chunk count was.
+
+        Deletes on the `path` metadata rather than on reconstructed ids, because
+        the id shape depends on how many chunks the PREVIOUS run produced, which
+        is exactly the number this code does not have.
+        """
+        collection = getattr(self._vault, "collection", None)
+        if collection is None:
+            self._vault._ensure_ready()
+            collection = getattr(self._vault, "collection", None)
+        if collection is None:
+            return
+        try:
+            collection.delete(where={"path": path})
+        except Exception as e:  # pragma: no cover - depends on chromadb backend
+            # Never fatal: leaving a stale row is bad, but failing the whole
+            # ingest over it is worse.
+            logger.warning("Could not drop previous rows for %s: %s", path, e)
 
     def forget(self, source_path: str) -> dict:
         """Drop everything previously ingested from source_path.
