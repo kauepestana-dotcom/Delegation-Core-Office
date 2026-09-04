@@ -432,6 +432,7 @@ Apply these without exception when delegation-core is online.
 | Two notes might be duplicates | `vault_find_similar` |
 | User needs live/external web information | `search_vault` first, then `search_web` if vault empty |
 | A question is about one client and the vault holds several | `search_vault(..., client=...)` |
+| The answer is in content written in another language | Ask in **that** language — see below |
 | User wants to cross-link an existing vault folder (small) | `relink_folder` |
 | User wants to cross-link an existing vault folder (large) | `relink_folder_bg` → poll `task_status` |
 | User has an external folder to make searchable (small) | `ingest_folder` |
@@ -447,6 +448,34 @@ Apply these without exception when delegation-core is online.
   which already compresses the results.
 - Do not create a new note when the user is adding to an existing topic — use `vault_update_note`.
 - Do not run `run_maintenance` blindly — check `vault_inbox_status` first to confirm there is work.
+
+### The query language is a retrieval parameter, not a courtesy
+
+`bge-base-en-v1.5` is monolingual English. It does not align Portuguese and English in one
+vector space, so **the language of the question outweighs its subject**. On a bilingual vault
+this is not a degradation, it is a blind spot: measured over 12 known-answer queries asked in
+both languages, questions in Portuguese about English content scored **0/6 at rank 1 and 0/6
+in the top 5** — the right document never appeared at all. The same six questions in English:
+**6/6 at rank 1**.
+
+It fails loudly in the worst way, which is silently. The wrong first result scored up to
+**0.785**, above the 0.65 high-confidence band, so a wrong answer arrives looking right.
+"Como criar uma nova skill" returned a REPUS financial note; "how to create a new skill"
+returned `skill-creator/SKILL.md`.
+
+**So: ask in the language the target content is written in.** On this vault that means English
+for the skills and the delegation-core documentation, Portuguese for the user's own material.
+When unsure, search twice and merge — a second search is milliseconds, a wrong answer is not.
+
+`client=` is the second lever and composes with the first: filtering took the same failing
+quadrant from 0/6 to **5/6 findable, with zero regressions elsewhere**. Use both.
+
+Neither costs a reindex. Both were measured on 2026-09-04 against a 1567-row index; the
+numbers and the method are in `decisions/2026-09-04-Modelo de embedding inglês contra vault
+bilíngue`. Switching to the multilingual `bge-m3` fixes this in the index instead, and was
+rejected on cost for a CPU-only machine: 10x slower to embed (~4h to reindex against ~24min)
+and +269 ms on every query. Revisit that trade if searches start coming from callers that
+cannot choose a language or a filter — the dashboard, or another MCP client.
 
 ---
 
@@ -882,6 +911,7 @@ Found a fix              → write_note(folder="Fixes", ...)
 Adding to existing note  → vault_update_note(<name>, <new content>)
 User asks recall         → search_vault(<query>)   [escopo adaptativo; veja default_search_scope]
 Pergunta sobre um cliente→ search_vault(<query>, client=<nome>)   [combina com scope]
+Alvo em outro idioma     → pergunte NAQUELE idioma   [PT->conteudo EN: 0/6; em EN: 6/6]
 Que clientes existem     → vault_stats().clients
 Question about a codebase→ search_vault(<query>, graph=<name>) ou scope='generated'
 Rename a note            → vault_rename_note(<path>, <new title>)  (repoints links)
