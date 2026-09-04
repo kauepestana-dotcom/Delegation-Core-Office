@@ -499,7 +499,14 @@ def cmd_status(_args):
 
     try:
         import chromadb
-        client = chromadb.PersistentClient(path=str(cfg.chroma_path))
+        # Same settings every other caller uses (vault.py, doctor.py). chromadb
+        # caches one System per path and rejects a second client on that path
+        # with different settings, so a bare client here poisons the
+        # VaultManager built later in this same process: that is how
+        # `embed-model --reindex` came to index 0 notes without failing.
+        client = chromadb.PersistentClient(
+            path=str(cfg.chroma_path),
+            settings=chromadb.Settings(anonymized_telemetry=False))
         # cfg.collection_name, not the historical literal: every other caller
         # derives the name from the embedding model, so on any install using
         # something other than bge-base this looked up a collection that does
@@ -1064,7 +1071,14 @@ def cmd_embed_model(args):
         import chromadb
         counts = {}
         try:
-            client = chromadb.PersistentClient(path=str(cfg.chroma_path))
+            # Same settings every other caller uses (vault.py, doctor.py). chromadb
+            # caches one System per path and rejects a second client on that path
+            # with different settings, so a bare client here poisons the
+            # VaultManager built later in this same process: that is how
+            # `embed-model --reindex` came to index 0 notes without failing.
+            client = chromadb.PersistentClient(
+                path=str(cfg.chroma_path),
+                settings=chromadb.Settings(anonymized_telemetry=False))
             counts = {c.name: c.count() for c in client.list_collections()}
         except Exception:
             pass
@@ -1104,7 +1118,14 @@ def cmd_embed_model(args):
     import chromadb
     existing = 0
     try:
-        client = chromadb.PersistentClient(path=str(cfg.chroma_path))
+        # Same settings every other caller uses (vault.py, doctor.py). chromadb
+        # caches one System per path and rejects a second client on that path
+        # with different settings, so a bare client here poisons the
+        # VaultManager built later in this same process: that is how
+        # `embed-model --reindex` came to index 0 notes without failing.
+        client = chromadb.PersistentClient(
+            path=str(cfg.chroma_path),
+            settings=chromadb.Settings(anonymized_telemetry=False))
         existing = client.get_collection(collection).count()
     except Exception:
         pass
