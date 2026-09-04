@@ -178,14 +178,21 @@ def client_from_path(path: str, roots: list[str] | None = None,
     if not path or not roots:
         return ""
     try:
-        p = PurePosixPath(path)
+        # Windows grava os caminhos com barra invertida, e PurePosixPath so
+        # quebra componentes em '/': um caminho Windows inteiro virava UM
+        # componente, relative_to() levantava ValueError e a funcao caia no
+        # return "" final. O efeito era client_path_roots inteiramente inerte
+        # no Windows, silenciosamente -- indistinguivel de "esse cliente nao
+        # tem documentos". Normalizar o separador nos dois lados corrige sem
+        # mudar nada no POSIX, onde replace() e no-op.
+        p = PurePosixPath(str(path).replace("\\", "/"))
     except (TypeError, ValueError):
         return ""
     for root in roots:
         if not root:
             continue
         try:
-            rel = p.relative_to(PurePosixPath(root))
+            rel = p.relative_to(PurePosixPath(str(root).replace("\\", "/")))
         except ValueError:
             continue
         parts = rel.parts

@@ -226,3 +226,37 @@ def test_frontmatter_custom_metadata_is_promoted_and_persists(vm):
     assert meta.get("status") == "active"
     assert meta.get("project") == "Atlas"
     assert meta.get("category") == "infrastructure"
+
+
+def test_client_from_path_aceita_caminho_windows():
+    """Caminho nativo do Windows deve derivar cliente igual ao POSIX.
+
+    client_from_path usa PurePosixPath, que so quebra componentes em '/'. Um
+    caminho Windows inteiro virava UM componente, relative_to() levantava
+    ValueError e a funcao devolvia "" para todo arquivo -- client_path_roots
+    ficava inteiramente inerte no Windows, sem erro nenhum, indistinguivel de
+    "esse cliente nao tem documentos".
+
+    Toda asserção existente neste arquivo usa caminho POSIX, que foi como o
+    defeito passou. Os quatro cruzamentos abaixo cobrem a mistura de
+    separadores entre raiz e arquivo, que e o caso real: config escrita a mao
+    de um lado, caminho gravado pelo ingest do outro.
+    """
+    raiz_win   = r"C:\Work\Oksigen"
+    arq_win    = r"C:\Work\Oksigen\Gazin\deck.pdf"
+    raiz_posix = "C:/Work/Oksigen"
+    arq_posix  = "C:/Work/Oksigen/Gazin/deck.pdf"
+
+    assert client_from_path(arq_win,   [raiz_win])   == "gazin"
+    assert client_from_path(arq_posix, [raiz_win])   == "gazin"
+    assert client_from_path(arq_win,   [raiz_posix]) == "gazin"
+    assert client_from_path(arq_posix, [raiz_posix]) == "gazin"
+
+
+def test_client_from_path_windows_preserva_as_guardas():
+    """A normalizacao de separador nao pode afrouxar as duas regras de recusa."""
+    raiz = r"C:\Work\Oksigen"
+    # arquivo direto na raiz nao tem segmento de cliente para ler
+    assert client_from_path(r"C:\Work\Oksigen\solto.pdf", [raiz]) == ""
+    # raiz que nao casa continua sem cliente
+    assert client_from_path(r"C:\Outro\Gazin\deck.pdf", [raiz]) == ""
