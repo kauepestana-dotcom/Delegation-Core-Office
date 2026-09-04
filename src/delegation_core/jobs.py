@@ -20,6 +20,8 @@ import os
 import statistics
 import threading
 import uuid
+
+from . import keepawake
 from datetime import datetime
 from pathlib import Path
 
@@ -114,6 +116,12 @@ def submit(task_name: str, fn, *args, **kwargs) -> str:
             "error": None,
         }
 
+    # Pedido ANTES de a thread comecar: se fosse dentro de _worker haveria uma
+    # janela entre submit() retornar e a thread ser escalonada em que a maquina
+    # ainda poderia suspender. keepawake conta referencias, entao jobs
+    # simultaneos nao soltam o bloqueio uns dos outros.
+    keepawake.acquire()
+
     def _worker():
         started_at = datetime.now()
         try:
@@ -130,6 +138,10 @@ def submit(task_name: str, fn, *args, **kwargs) -> str:
             _record_duration(task_name, (datetime.now() - started_at).total_seconds())
         with _lock:
             _jobs[job_id].update(update)
+        # finally nao: o try acima ja captura tudo e sempre define `update`.
+        # Um release aqui, apos a escrita do status, garante que quem observa
+        # "done" nunca ve o bloqueio ainda pendurado.
+        keepawake.release()
 
     threading.Thread(target=_worker, daemon=True, name=f"job-{job_id}").start()
     logger.info("Submitted background job %s: %s", job_id, task_name)
